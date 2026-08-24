@@ -52,6 +52,9 @@ def _to_admin_response(ticket: EscalationTicket) -> EscalationAdminResponse:
         employee_email=ticket.employee.email,
         resolved_by_name=ticket.resolved_by.name if ticket.resolved_by else None,
         messages=[_to_message(m) for m in ticket.messages] if ticket.messages else [],
+        pipeline_trace=ticket.pipeline_trace,
+        langsmith_run_id=ticket.langsmith_run_id,
+        langsmith_trace_url=ticket.langsmith_trace_url,
     )
 
 

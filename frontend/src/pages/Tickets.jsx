@@ -30,6 +30,14 @@ const REASON_LABEL = {
   system_error: "System error",
 };
 
+const FILTERS = [
+  { value: "", label: "All" },
+  { value: "open", label: "Open" },
+  { value: "in_progress", label: "In progress" },
+  { value: "resolved", label: "Resolved" },
+  { value: "closed", label: "Closed" },
+];
+
 function ThreadMessage({ msg }) {
   const isAdmin = msg.sender_role === "admin";
   return (
@@ -127,6 +135,7 @@ export default function Tickets() {
   const [lookupId, setLookupId] = useState("");
   const [lookupError, setLookupError] = useState("");
   const [looking, setLooking] = useState(false);
+  const [filter, setFilter] = useState("");
 
   const loadAll = async () => {
     setLoading(true);
@@ -147,6 +156,15 @@ export default function Tickets() {
   const handleTicketUpdated = (updated) => {
     setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   };
+
+  // Client-side filter - listMyTickets() already returns the employee's
+  // full ticket list in one call, so there's no need for a server round
+  // trip per filter click. Compare against the lowercased status so this
+  // still matches regardless of any casing differences coming back from
+  // the API (mirrors the tolerant lookup used for the status Badge below).
+  const filteredTickets = filter
+    ? tickets.filter((t) => t.status?.toLowerCase() === filter)
+    : tickets;
 
   // Manual lookup stays useful if someone shares a ticket id (e.g. from an
   // email) that isn't the employee's own - the backend still 404s on
@@ -203,6 +221,25 @@ export default function Tickets() {
             </form>
           </Card>
 
+          {!loading && tickets.length > 0 && (
+            <div className="mb-5 flex flex-wrap gap-2">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  onClick={() => setFilter(f.value)}
+                  className={
+                    "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors " +
+                    (filter === f.value
+                      ? "border-moss-500 bg-moss-50 text-moss-600"
+                      : "border-line bg-white text-ink2 hover:text-ink")
+                  }
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {loading && (
             <div className="flex flex-col gap-3">
               <Skeleton className="h-20" />
@@ -218,9 +255,17 @@ export default function Tickets() {
             />
           )}
 
-          {!loading && tickets.length > 0 && (
+          {!loading && tickets.length > 0 && filteredTickets.length === 0 && (
+            <EmptyState
+              icon={LifeBuoy}
+              title="No tickets match this filter"
+              description='Try a different status, or select "All" to see every ticket.'
+            />
+          )}
+
+          {!loading && filteredTickets.length > 0 && (
             <div className="flex flex-col gap-3">
-              {tickets.map((t) =>
+              {filteredTickets.map((t) =>
                 t.status === "unavailable" ? (
                   <Card key={t.id} className="border-danger/20 bg-danger/5">
                     <div className="flex items-center gap-2 text-sm text-danger">

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Any, Optional, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -46,3 +46,9 @@ class EscalationAdminResponse(EscalationResponse):
     employee_name: str
     employee_email: str
     resolved_by_name: Optional[str] = None
+    # Snapshot of what the agent was doing at the moment it escalated
+    # (predicted intent, retrieval scores vs. confidence threshold, routing
+    # decision, stage timings) - admin/HR only, never shown to the employee.
+    pipeline_trace: Optional[dict[str, Any]] = None
+    langsmith_run_id: Optional[str] = None
+    langsmith_trace_url: Optional[str] = None

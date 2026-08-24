@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LifeBuoy, RefreshCcw, CheckCircle2, Send } from "lucide-react";
+import { LifeBuoy, RefreshCcw, CheckCircle2, Send, Zap, ChevronDown, ChevronUp, Clock, ExternalLink, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 import AppShell from "../../components/AppShell";
 import Card from "../../components/Card";
@@ -38,6 +38,153 @@ const FILTERS = [
   { value: "resolved", label: "Resolved" },
   { value: "closed", label: "Closed" },
 ];
+
+const STAGE_LABELS = { classify_ms: "Intent classification", retrieval_ms: "Policy retrieval", agent_ms: "Agent/LLM run" };
+const STAGE_ORDER = ["classify_ms", "retrieval_ms", "agent_ms"];
+const ROUTE_TONE = { rag: "success", hris: "amber", escalation: "warn" };
+
+/** Why this specific ticket got raised - predicted intent, routing
+ * decision, retrieval scores vs. the confidence threshold, and stage
+ * timings, captured at the exact moment the agent escalated (see
+ * pipeline_trace on the ticket, built in app/agent/graph.py). Also links
+ * out to the full LangSmith trace when tracing is enabled, so HR can see
+ * every underlying LLM/tool call for that turn. */
+function TicketTraceSection({ ticket }) {
+  const [open, setOpen] = useState(false);
+  const trace = ticket.pipeline_trace;
+
+  if (!trace && !ticket.langsmith_run_id) return null;
+
+  const timings = trace?.timings_ms || {};
+  const totalMs = timings.total_ms || Object.values(timings).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0) || 1;
+  const retrieval = trace?.retrieval;
+
+  const copyRunId = () => {
+    navigator.clipboard?.writeText(ticket.langsmith_run_id);
+    toast.success("Run ID copied");
+  };
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs text-ink2 transition-colors hover:border-moss-500/50 hover:text-moss-600"
+      >
+        <Zap size={12} />
+        {open ? "Hide why this escalated" : "Why did this escalate?"}
+        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        {timings.total_ms != null && (
+          <span className="ml-1 flex items-center gap-1 text-ink2/70">
+            <Clock size={11} /> {timings.total_ms} ms
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-4 rounded-lg border border-line bg-paper-dim/50 p-3.5">
+          {trace && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="neutral">intent: {trace.predicted_intent}</Badge>
+              <Badge tone={ROUTE_TONE[trace.route_taken] || "neutral"}>route: {trace.route_taken}</Badge>
+              {trace.tool_used && <Badge tone="amber">tool: {trace.tool_used}</Badge>}
+              {trace.sensitive_category && <Badge tone="warn">sensitive: {trace.sensitive_category}</Badge>}
+              {trace.error && <Badge tone="danger">error</Badge>}
+            </div>
+          )}
+
+          {Object.keys(timings).length > 0 && (
+            <div>
+              <p className="mb-1.5 text-[11px] uppercase tracking-wide text-ink2/60">Stage timings</p>
+              <div className="space-y-1.5">
+                {STAGE_ORDER.filter((k) => timings[k] != null).map((k) => (
+                  <div key={k} className="flex items-center gap-2 text-xs">
+                    <span className="w-36 shrink-0 text-ink2">{STAGE_LABELS[k]}</span>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line/70">
+                      <div
+                        className="h-full rounded-full bg-moss-500"
+                        style={{ width: `${Math.max(2, (timings[k] / totalMs) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="w-14 shrink-0 text-right font-mono text-ink2">{timings[k]} ms</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {retrieval && (
+            <div>
+              <p className="mb-1.5 text-[11px] uppercase tracking-wide text-ink2/60">Retrieval</p>
+              <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-white px-3 py-2 font-mono text-xs text-ink">
+                <span className="truncate">"{retrieval.query}"</span>
+                <Badge tone={retrieval.confident ? "success" : "warn"}>
+                  {retrieval.confident ? "confident" : "below threshold"}
+                </Badge>
+                <span className="text-ink2/70">threshold {retrieval.similarity_threshold}</span>
+              </div>
+              {retrieval.candidates?.length > 0 && (
+                <div className="space-y-1.5">
+                  {retrieval.candidates.map((c, i) => (
+                    <div
+                      key={i}
+                      className={
+                        "rounded-lg border px-3 py-2 " +
+                        (c.used_in_context ? "border-moss-300 bg-moss-50/60" : "border-line bg-white/60")
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs text-ink">
+                          {c.document_title ? `${c.document_title} · ` : ""}
+                          {c.section_title || c.section_id}
+                        </span>
+                        {c.used_in_context && <Badge tone="success">used</Badge>}
+                      </div>
+                      <div className="mt-1 font-mono text-[10px] text-ink2/70">vector score {c.vector_score}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {trace?.error && (
+            <div>
+              <p className="mb-1.5 text-[11px] uppercase tracking-wide text-ink2/60">Error</p>
+              <pre className="whitespace-pre-wrap rounded-lg border border-danger/20 bg-danger/5 p-2.5 font-mono text-[11px] text-danger">
+                {trace.error}
+              </pre>
+            </div>
+          )}
+
+          {(ticket.langsmith_trace_url || ticket.langsmith_run_id) && (
+            <div className="flex items-center gap-2 border-t border-line pt-3">
+              {ticket.langsmith_trace_url ? (
+                <a
+                  href={ticket.langsmith_trace_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:opacity-90"
+                >
+                  <ExternalLink size={12} /> Open full trace in LangSmith
+                </a>
+              ) : (
+                <>
+                  <span className="font-mono text-[11px] text-ink2/70">Run: {ticket.langsmith_run_id}</span>
+                  <button
+                    onClick={copyRunId}
+                    className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[11px] text-ink2 hover:text-ink"
+                  >
+                    <Copy size={11} /> Copy
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ActionModal({ ticket, onClose, onSaved }) {
   const [status, setStatus] = useState(ticket.status);
@@ -103,6 +250,8 @@ function ActionModal({ ticket, onClose, onSaved }) {
             {ticket.topic_category ? ` · ${ticket.topic_category}` : ""}
           </p>
         </div>
+
+        <TicketTraceSection ticket={ticket} />
 
         {messages.length > 0 && (
           <div className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-lg border border-line bg-paper-dim/50 p-3">
@@ -179,6 +328,11 @@ function TicketRow({ ticket, onAction }) {
       <span className="hidden shrink-0 font-mono text-xs text-ink2 sm:block">
         {new Date(ticket.created_at).toLocaleString()}
       </span>
+      {ticket.pipeline_trace && (
+        <span title="Pipeline trace available" className="shrink-0 text-moss-500">
+          <Zap size={14} />
+        </span>
+      )}
       <Badge tone={STATUS_TONE[ticket.status?.toLowerCase()] || "neutral"}>
         {STATUS_LABEL[ticket.status] || ticket.status}
       </Badge>

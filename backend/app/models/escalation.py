@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import String, Text, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,6 +27,18 @@ class EscalationTicket(Base):
         UUID(as_uuid=True), ForeignKey("employees.id"), nullable=True
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Snapshot of the pipeline trace (predicted intent, retrieval scores,
+    # confidence-threshold check, stage timings - same shape as
+    # conversation_turns.debug_trace) taken at the exact moment this ticket
+    # was raised, so HR sees why the agent escalated without cross-
+    # referencing the conversation separately.
+    pipeline_trace: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # LangSmith run id/url for that same turn, when tracing is enabled -
+    # lets HR jump straight into the full LangSmith trace (every LLM call,
+    # tool call, and intermediate step) for this escalation.
+    langsmith_run_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    langsmith_trace_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(

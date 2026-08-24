@@ -20,7 +20,16 @@ async def create_escalation_ticket(
     conversation_id: uuid.UUID,
     reason: str,
     topic_category: str | None = None,
+    pipeline_trace: dict | None = None,
+    langsmith_run_id: str | None = None,
+    langsmith_trace_url: str | None = None,
 ) -> EscalationTicket:
+    """pipeline_trace/langsmith_* are an optional snapshot of what the agent
+    was doing right when it decided to escalate (predicted intent, retrieval
+    scores vs. confidence threshold, routing decision, and - when LangSmith
+    tracing is on - a link straight into the full trace). Callers that don't
+    have this yet (e.g. the manual escalate_to_hr tool below, or an
+    employee self-escalating with no agent run behind it) simply omit it."""
     ticket = EscalationTicket(
         id=uuid.uuid4(),
         employee_id=employee_id,
@@ -28,6 +37,9 @@ async def create_escalation_ticket(
         reason=reason,
         topic_category=topic_category,
         status="open",
+        pipeline_trace=pipeline_trace,
+        langsmith_run_id=langsmith_run_id,
+        langsmith_trace_url=langsmith_trace_url,
     )
     db.add(ticket)
     await db.flush()
@@ -48,4 +60,3 @@ def make_escalation_tool(db: AsyncSession, employee_id: uuid.UUID, conversation_
         return f"TICKET_CREATED:{ticket.id}"
 
     return escalate_to_hr
-

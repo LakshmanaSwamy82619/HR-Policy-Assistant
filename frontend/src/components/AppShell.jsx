@@ -127,9 +127,15 @@ function SidebarContent({ onNavigate }) {
       */}
       <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-2">
         <nav className="flex flex-col gap-1">
-          {primaryNav.map((item) => (
-            <NavItem key={item.to} {...item} onClick={onNavigate} />
-          ))}
+          {/* "My HR record" and "HR tickets" are the employee's own
+              self-service links. Admins already have the full "HR ticket
+              queue" under the Admin section below, so these two are hidden
+              for admin accounts to avoid duplicate/irrelevant nav items. */}
+          {primaryNav
+            .filter((item) => !isAdmin || (item.to !== "/my-record" && item.to !== "/tickets"))
+            .map((item) => (
+              <NavItem key={item.to} {...item} onClick={onNavigate} />
+            ))}
         </nav>
 
         {conversations.length > 0 && (
