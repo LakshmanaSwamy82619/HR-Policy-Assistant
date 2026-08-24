@@ -352,7 +352,7 @@ export default function AdminTickets() {
   const load = async (statusFilter = filter) => {
     setLoading(true);
     try {
-      const data = await listAllTickets(statusFilter || undefined);
+      const data = await listAllTickets({status:statusFilter || undefined});
       setTickets(data);
     } catch (err) {
       toast.error(err.message || "Couldn't load tickets");
